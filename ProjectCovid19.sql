@@ -124,3 +124,18 @@ Where CD.continent is not null
 
 Select *, (RollingPeopleVaccinated/Population)*100
 From #POPvsVAC
+
+
+--Creating View Tables for visualizations
+
+Create View PercentPopulationVaccinated as
+Select CD.continent, CD.location, CD.date, CD.population, CV.new_vaccinations, 
+SUM(CONVERT(int,CV.new_vaccinations)) OVER (Partition by CD.Location Order by CD.location, CD.Date) as RollingPeopleVaccinated
+From ProjectCovid19..CovidDeaths CD
+Join ProjectCovid19..CovidVaccinations CV
+	On CD.location = CV.location
+	and CD.date    = CV.date
+Where CD.continent is not null
+
+
+Select * from PercentPopulationVaccinated 
