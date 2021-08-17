@@ -1,0 +1,512 @@
+-- Shows all columns (*) from a table
+Select * From Product
+​
+-- Shows specific columns from a table
+select 
+	ProductName, 
+	Detail
+From Product
+​
+-- Shows the different combinations of specific columns
+Select 
+	ProductName, 
+	Detail 
+From Product
+Group by ProductName, Detail
+​
+-- Shows the different ProductNames for Products with Detail = 'Capuccino'
+Select 
+	ProductName, 
+	Detail 
+From Product
+Where Detail = 'Capuccino'
+Group by ProductName, Detail
+​
+-- Filters the Product table by Detail = 'Capuccino'
+Select * From Product
+Where Detail = 'Capuccino'
+​
+-- Calculates the Average of Unit Price by Product
+Select 
+	P.ProductKey, 
+	P.ProductName, 
+	AVG(sd.UnitPrice) as 'Av. Unit Price'
+From Product P
+left join SalesDetails SD on P.ProductKey = SD.ProductKey
+Group by P.ProductKey, P.ProductName
+Order by AVG(sd.UnitPrice) desc
+
+
+-- CREATING A STAGING AREA WITH STORED PROCEDURES
+
+/*****STAGING AREA*****/
+Create Database ProjectHPNStaging
+
+
+USE ProjectHPNStaging
+Drop table
+Account,
+AccountHeader,
+Customer,
+DepartmentGroup,
+Finance,
+Geography,
+Organization,
+Product,
+ProductCostHistory,
+ProductSubcategory,
+Region,
+SalesDetails,
+SalesHeader,
+SalesReturns
+
+Select * Into ProjectHPNStaging..Account			from ProjectHPN..Account
+Select * Into ProjectHPNStaging..AccountHeader		from ProjectHPN..AccountHeader
+Select * Into ProjectHPNStaging..Customer			from ProjectHPN..Customer
+Select * Into ProjectHPNStaging..DepartmentGroup	from ProjectHPN..DepartmentGroup
+Select * Into ProjectHPNStaging..Finance			from ProjectHPN..Finance
+Select * Into ProjectHPNStaging..Geography			from ProjectHPN..Geography
+Select * Into ProjectHPNStaging..Organization		from ProjectHPN..Organization
+Select * Into ProjectHPNStaging..Product			from ProjectHPN..Product
+Select * Into ProjectHPNStaging..ProductCostHistory from ProjectHPN..ProductCostHistory
+Select * Into ProjectHPNStaging..ProductSubcategory from ProjectHPN..ProductSubcategory
+Select * Into ProjectHPNStaging..Region				from ProjectHPN..Region
+Select * Into ProjectHPNStaging..SalesDetails		from ProjectHPN..SalesDetails
+Select * Into ProjectHPNStaging..SalesHeader		from ProjectHPN..SalesHeader
+Select * Into ProjectHPNStaging..SalesReturns		from ProjectHPN..SalesReturns
+
+
+/*****STORED PROCEDURES*****/
+
+Create Procedure spExtractTablesFromOLTP AS
+
+Drop table
+Account,
+AccountHeader,
+Customer,
+DepartmentGroup,
+Finance,
+Geography,
+Organization,
+Product,
+ProductCostHistory,
+ProductSubcategory,
+Region,
+SalesDetails,
+SalesHeader,
+SalesReturns
+
+Select * Into ProjectHPNStaging..Account			from ProjectHPN..Account
+Select * Into ProjectHPNStaging..AccountHeader		from ProjectHPN..AccountHeader
+Select * Into ProjectHPNStaging..Customer			from ProjectHPN..Customer
+Select * Into ProjectHPNStaging..DepartmentGroup	from ProjectHPN..DepartmentGroup
+Select * Into ProjectHPNStaging..Finance			from ProjectHPN..Finance
+Select * Into ProjectHPNStaging..Geography			from ProjectHPN..Geography
+Select * Into ProjectHPNStaging..Organization		from ProjectHPN..Organization
+Select * Into ProjectHPNStaging..Product			from ProjectHPN..Product
+Select * Into ProjectHPNStaging..ProductCostHistory from ProjectHPN..ProductCostHistory
+Select * Into ProjectHPNStaging..ProductSubcategory from ProjectHPN..ProductSubcategory
+Select * Into ProjectHPNStaging..Region				from ProjectHPN..Region
+Select * Into ProjectHPNStaging..SalesDetails		from ProjectHPN..SalesDetails
+Select * Into ProjectHPNStaging..SalesHeader		from ProjectHPN..SalesHeader
+Select * Into ProjectHPNStaging..SalesReturns		from ProjectHPN..SalesReturns
+
+
+/*****EXECUTE STORED PROCEDURES*****/
+EXEC spExtractTablesFromOLTP
+
+
+-- Creating DIMENSION and FACT Tables
+
+/*****CUSTOMER DIMENSION TABLE*****/
+Select 
+	C.CustomerKey,
+	C.Customer,
+	G.CityName,
+	G.StateCode,
+	G.StateName,
+	G.CountryName,
+	R.Continent
+From Customer C
+left join Geography G	on G.GeographyKey	= c.GeographyKey
+left join Region R		on R.RegionKey		= G.RegionKey
+
+/*****PRODUCT DIMENSION TABLE*****/
+Select
+	P.ProductKey,
+	P.ProductName,
+	P.Size,
+	P.Detail,
+	PS.SubcategoryName,
+	PS.CategoryName
+From Product P
+left join ProductSubcategory PS on PS.ProductSubcategoryKey = P.ProductSubcategoryKey
+
+/*****SALES FACT TABLE*****/
+Select 
+	SH.OrderDate,
+	SH.DueDate,
+	SH.ShipDate,
+	SH.SalesOrderNumber,
+	SH.CustomerKey,
+	SD.ProductKey,
+	SD.OrderQuantity,
+	SD.UnitPrice,
+	PCH.UnitCost,
+	ROUND(SH.DiscountAmount/SH.TotalAmount, 5) as DiscountPercentage,
+	ROUND(SH.DiscountAmount * (SD.ExtendedAmount/SH.TotalAmount),3) as Discount,
+	ROUND(SD.ExtendedAmount - SH.DiscountAmount * (SD.ExtendedAmount/SH.TotalAmount),3) as NetSales
+From SalesDetails SD
+left join SalesHeader SH			on SH.SalesHeaderKey = SD.SalesHeaderKey
+left join Customer C				on C.CustomerKey = SH.CustomerKey
+left join Geography G				on G.GeographyKey = C.GeographyKey
+left join ProductCostHistory PCH	on 
+	PCH.CountryCode = G.CountryCode and
+	PCH.MonthNo		= MONTH(OrderDate) and
+	PCH.Year		= YEAR(SH.OrderDate) and
+	PCH.ProductKey	= SD.ProductKey
+
+/*****SALES RETURNS FACT TABLE*****/
+Select 
+	OrderDate,	
+	ReturnDate,	
+	SalesOrderNumber,	
+	CustomerKey,
+	ProductKey,	
+	ReturnQuantity,	
+	UnitPrice,	
+	ReturnAmount
+From SalesReturns
+
+
+-- Creating views in the database and importing into Power BI
+
+/*****CUSTOMER DIMENSION TABLE VIEW*****/
+Create view vwDimCustomers as
+Select 
+	C.CustomerKey,
+	C.Customer,
+	G.CityName,
+	G.StateCode,
+	G.StateName,
+	G.CountryName,
+	R.Continent
+From Customer C
+left join Geography G	on G.GeographyKey	= c.GeographyKey
+left join Region R		on R.RegionKey		= G.RegionKey
+
+/*****PRODUCT DIMENSION TABLE VIEW*****/
+Create view vwDimProducts as
+Select
+	P.ProductKey,
+	P.ProductName,
+	P.Size,
+	P.Detail,
+	PS.SubcategoryName,
+	PS.CategoryName
+From Product P
+left join ProductSubcategory PS on PS.ProductSubcategoryKey = P.ProductSubcategoryKey
+
+/*****SALES FACT TABLE VIEW*****/
+Create view vwFtSales as
+Select 
+	SH.OrderDate,
+	SH.DueDate,
+	SH.ShipDate,
+	SH.SalesOrderNumber,
+	SH.CustomerKey,
+	SD.ProductKey,
+	SD.OrderQuantity,
+	SD.UnitPrice,
+	PCH.UnitCost,
+	ROUND(SH.DiscountAmount/SH.TotalAmount, 5) as DiscountPercentage,
+	ROUND(SH.DiscountAmount * (SD.ExtendedAmount/SH.TotalAmount),3) as Discount,
+	ROUND(SD.ExtendedAmount - SH.DiscountAmount * (SD.ExtendedAmount/SH.TotalAmount),3) as NetSales
+From SalesDetails SD
+left join SalesHeader SH			on SH.SalesHeaderKey = SD.SalesHeaderKey
+left join Customer C				on C.CustomerKey = SH.CustomerKey
+left join Geography G				on G.GeographyKey = C.GeographyKey
+left join ProductCostHistory PCH	on 
+	PCH.CountryCode = G.CountryCode and
+	PCH.MonthNo		= MONTH(OrderDate) and
+	PCH.Year		= YEAR(SH.OrderDate) and
+	PCH.ProductKey	= SD.ProductKey
+
+/*****SALES RETURNS FACT TABLE VIEW*****/
+Create view vwFtSalesReturns as
+Select 
+	OrderDate,	
+	ReturnDate,	
+	SalesOrderNumber,	
+	CustomerKey,
+	ProductKey,	
+	ReturnQuantity,	
+	UnitPrice,	
+	ReturnAmount
+From SalesReturns
+
+
+-- Creatin Data Warehouse in Database
+
+Create database ProjectHPNDW
+
+
+/*****Creating Dimension and Fact tables in DW*****/
+
+USE ProjectHPNDW
+
+Create table DimCustomer(
+	CustomerKey INT,
+	Customer	varchar(200),
+	CityName	varchar(200),
+	StateCode	varchar(3),
+	StateName	varchar(200),
+	CountryName	varchar(200),
+	Continent	varchar(200)
+)
+
+
+Create table DimProducts(
+	ProductKey			INT,
+	ProductName			varchar(200),
+	Size				varchar(200),
+	Detail				varchar(200),
+	SubcategoryName		varchar(200),
+	CategoryName		varchar(200)
+)
+
+
+Create table FtSales(
+	OrderDate			Date,
+	DueDate				Date,
+	ShipDate			Date,
+	SalesOrderNumber	varchar(200),
+	CustomerKey			INT,
+	ProductKey			INT,
+	OrderQuantity		INT,
+	UnitPrice			Float,
+	UnitCost			Float,
+	DiscountPercentage	Float,
+	Discount			Float,
+	NetSales			Float
+)
+
+
+Create table FtSalesReturns(
+OrderDate				Date,
+ReturnDate				Date,
+SalesOrderNumber		varchar(200),
+CustomerKey				INT,
+ProductKey				INT,
+ReturnQuantity			INT,
+UnitPrice				Float,
+ReturnAmount			Float
+)
+
+
+/*****Feed data from Staging View tables to DW Physical Tables*****/
+
+Insert into ProjectHPNDW..DimCustomer(
+	CustomerKey, 
+	Customer,	
+	CityName,	
+	StateCode,	
+	StateName,	
+	CountryName,	
+	Continent	
+)
+
+Select
+	CustomerKey, 
+	Customer,	
+	CityName,	
+	StateCode,	
+	StateName,	
+	CountryName,	
+	Continent
+From ProjectHPNStaging..vwDimCustomers
+
+Insert into ProjectHPNDW..DimProducts(
+	ProductKey,		
+	ProductName,		
+	Size,			
+	Detail,			
+	SubcategoryName,	
+	CategoryName	
+)
+
+Select 
+	ProductKey,		
+	ProductName,		
+	Size,			
+	Detail,			
+	SubcategoryName,	
+	CategoryName	
+From ProjectHPNStaging..vwDimProducts
+
+Insert into ProjectHPNDW..FtSales(
+	OrderDate,			
+	DueDate,			
+	ShipDate,			
+	SalesOrderNumber,	
+	CustomerKey,			
+	ProductKey,			
+	OrderQuantity,		
+	UnitPrice,			
+	UnitCost,			
+	DiscountPercentage,	
+	Discount,			
+	NetSales			
+)
+
+Select 
+	OrderDate,			
+	DueDate,			
+	ShipDate,			
+	SalesOrderNumber,	
+	CustomerKey,			
+	ProductKey,			
+	OrderQuantity,		
+	UnitPrice,			
+	UnitCost,			
+	DiscountPercentage,	
+	Discount,			
+	NetSales			
+From ProjectHPNStaging..vwFtSales
+
+
+Insert into ProjectHPNDW..FtSalesReturns(
+	OrderDate,				
+	ReturnDate,
+	SalesOrderNumber,
+	CustomerKey,
+	ProductKey,
+	ReturnQuantity,
+	UnitPrice,
+	ReturnAmount			
+)
+
+Select 
+	OrderDate,				
+	ReturnDate,
+	SalesOrderNumber,
+	CustomerKey,
+	ProductKey,
+	ReturnQuantity,
+	UnitPrice,
+	ReturnAmount
+From ProjectHPNStaging..vwFtSalesReturns
+
+/*****Creating Stored Procedures and Jobs in Staging from DW*****/
+
+Create Procedure spLoadTablesProjectHPNDW AS
+
+Truncate table ProjectHPNDW..DimCustomer
+Truncate table ProjectHPNDW..DimProducts
+Truncate table ProjectHPNDW..FtSales
+Truncate table ProjectHPNDW..FtSalesReturns
+
+Insert into ProjectHPNDW..DimCustomer(
+	CustomerKey, 
+	Customer,	
+	CityName,	
+	StateCode,	
+	StateName,	
+	CountryName,	
+	Continent	
+)
+
+Select
+	CustomerKey, 
+	Customer,	
+	CityName,	
+	StateCode,	
+	StateName,	
+	CountryName,	
+	Continent
+From ProjectHPNStaging..vwDimCustomers
+
+Insert into ProjectHPNDW..DimProducts(
+	ProductKey,		
+	ProductName,		
+	Size,			
+	Detail,			
+	SubcategoryName,	
+	CategoryName	
+)
+
+Select 
+	ProductKey,		
+	ProductName,		
+	Size,			
+	Detail,			
+	SubcategoryName,	
+	CategoryName	
+From ProjectHPNStaging..vwDimProducts
+
+Insert into ProjectHPNDW..FtSales(
+	OrderDate,			
+	DueDate,			
+	ShipDate,			
+	SalesOrderNumber,	
+	CustomerKey,			
+	ProductKey,			
+	OrderQuantity,		
+	UnitPrice,			
+	UnitCost,			
+	DiscountPercentage,	
+	Discount,			
+	NetSales			
+)
+
+Select 
+	OrderDate,			
+	DueDate,			
+	ShipDate,			
+	SalesOrderNumber,	
+	CustomerKey,			
+	ProductKey,			
+	OrderQuantity,		
+	UnitPrice,			
+	UnitCost,			
+	DiscountPercentage,	
+	Discount,			
+	NetSales			
+From ProjectHPNStaging..vwFtSales
+
+
+Insert into ProjectHPNDW..FtSalesReturns(
+	OrderDate,				
+	ReturnDate,
+	SalesOrderNumber,
+	CustomerKey,
+	ProductKey,
+	ReturnQuantity,
+	UnitPrice,
+	ReturnAmount			
+)
+
+Select 
+	OrderDate,				
+	ReturnDate,
+	SalesOrderNumber,
+	CustomerKey,
+	ProductKey,
+	ReturnQuantity,
+	UnitPrice,
+	ReturnAmount
+From ProjectHPNStaging..vwFtSalesReturns
+
+/*****Execute the Created Stored Procedures and Jobs in Staging from DW*****/
+
+Exec spLoadTablesProjectHPNDW
+
+/*****Refresh ProjectHPNDW*****/
+
+Create Procedure	RefreshProjectHPNDW AS
+Exec				spExtractTablesFromOLTP
+Exec				spLoadTablesProjectHPNDW
+
+/*****Execute RefreshProjectHPNDW*****/
+
+Exec RefreshProjectHPNDW
